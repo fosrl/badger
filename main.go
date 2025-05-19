@@ -5,14 +5,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"strings"
 )
 
 type Config struct {
-	APIBaseUrl                  string `json:"apiBaseUrl"`
-	UserSessionCookieName       string `json:"userSessionCookieName"`
-	ResourceSessionRequestParam string `json:"resourceSessionRequestParam"`
+	APIBaseUrl                  string   `json:"apiBaseUrl"`
+	UserSessionCookieName       string   `json:"userSessionCookieName"`
+	ResourceSessionRequestParam string   `json:"resourceSessionRequestParam"`
+	TrustedIPs                  []string `json:"trustedIps"`
 }
 
 type Badger struct {
@@ -21,6 +23,8 @@ type Badger struct {
 	apiBaseUrl                  string
 	userSessionCookieName       string
 	resourceSessionRequestParam string
+	trustedIPNets               []*net.IPNet
+	trustedIPs                  map[string]bool
 }
 
 type VerifyBody struct {
@@ -63,13 +67,38 @@ func CreateConfig() *Config {
 }
 
 func New(ctx context.Context, next http.Handler, config *Config, name string) (http.Handler, error) {
-	return &Badger{
+	badger := &Badger{
 		next:                        next,
 		name:                        name,
 		apiBaseUrl:                  config.APIBaseUrl,
 		userSessionCookieName:       config.UserSessionCookieName,
 		resourceSessionRequestParam: config.ResourceSessionRequestParam,
-	}, nil
+		trustedIPs:                  make(map[string]bool),
+		trustedIPNets:               []*net.IPNet{},
+	}
+
+	// Parse the trusted IPs
+	for _, ipStr := range config.TrustedIPs {
+		// Check if it's a CIDR notation
+		if strings.Contains(ipStr, "/") {
+			_, ipNet, err := net.ParseCIDR(ipStr)
+			if err == nil {
+				badger.trustedIPNets = append(badger.trustedIPNets, ipNet)
+			} else {
+				fmt.Printf("Warning: Invalid CIDR notation in TrustedIPs: %s\n", ipStr)
+			}
+		} else {
+			// It's a single IP address
+			ip := net.ParseIP(ipStr)
+			if ip != nil {
+				badger.trustedIPs[ipStr] = true
+			} else {
+				fmt.Printf("Warning: Invalid IP address in TrustedIPs: %s\n", ipStr)
+			}
+		}
+	}
+
+	return badger, nil
 }
 
 func (p *Badger) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
@@ -78,10 +107,11 @@ func (p *Badger) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	queryValues := req.URL.Query()
 
 	if sessionRequestValue := queryValues.Get(p.resourceSessionRequestParam); sessionRequestValue != "" {
+		realIP := p.getRealIP(req)
 		body := ExchangeSessionBody{
 			RequestToken: &sessionRequestValue,
 			RequestHost:  &req.Host,
-			RequestIP:    &req.RemoteAddr,
+			RequestIP:    &realIP,
 		}
 
 		jsonData, err := json.Marshal(body)
@@ -149,6 +179,7 @@ func (p *Badger) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		}
 	}
 
+	realIP := p.getRealIP(req)
 	cookieData := VerifyBody{
 		Sessions:           cookies,
 		OriginalRequestURL: originalRequestURL,
@@ -157,7 +188,7 @@ func (p *Badger) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		RequestPath:        &req.URL.Path,
 		RequestMethod:      &req.Method,
 		TLS:                req.TLS != nil,
-		RequestIP:          &req.RemoteAddr,
+		RequestIP:          &realIP,
 		Headers:            headers,
 		Query:              queryParams,
 	}
@@ -233,4 +264,66 @@ func (p *Badger) getScheme(req *http.Request) string {
 		return "https"
 	}
 	return "http"
+}
+
+// isTrustedIP checks if the given IP is in the trusted list
+func (p *Badger) isTrustedIP(ipStr string) bool {
+	// Extract IP from "IP:port" format if needed
+	host, _, err := net.SplitHostPort(ipStr)
+	if err != nil {
+		// If error, use the original string (might not have a port)
+		host = ipStr
+	}
+
+	// First check direct IP match
+	if p.trustedIPs[host] {
+		return true
+	}
+
+	// Then check CIDR blocks
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+
+	for _, ipNet := range p.trustedIPNets {
+		if ipNet.Contains(ip) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// getRealIP returns the real client IP, considering headers if the request is from a trusted source
+func (p *Badger) getRealIP(req *http.Request) string {
+	remoteIP := req.RemoteAddr
+
+	if p.isTrustedIP(remoteIP) {
+		// Try CloudFlare's header first
+		if cfIP := req.Header.Get("CF-Connecting-IP"); cfIP != "" {
+			return cfIP
+		}
+
+		// Then try X-Real-IP
+		if realIP := req.Header.Get("X-Real-IP"); realIP != "" {
+			return realIP
+		}
+
+		// Then try X-Forwarded-For
+		if forwardedFor := req.Header.Get("X-Forwarded-For"); forwardedFor != "" {
+			// X-Forwarded-For can contain multiple IPs, take the first one
+			ips := strings.Split(forwardedFor, ",")
+			if len(ips) > 0 {
+				return strings.TrimSpace(ips[0])
+			}
+		}
+	}
+
+	// Fall back to remote address
+	host, _, err := net.SplitHostPort(remoteIP)
+	if err != nil {
+		return remoteIP // Return as is if there's no port
+	}
+	return host
 }
