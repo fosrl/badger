@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 )
 
@@ -81,81 +82,71 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
 }
 
 func (p *Badger) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	cookies := p.extractCookies(req)
-
 	queryValues := req.URL.Query()
+	if p.handleSessionExchange(rw, req, queryValues) { // handled via redirect or error
+		return
+	}
 
-	if sessionRequestValue := queryValues.Get(p.resourceSessionRequestParam); sessionRequestValue != "" {
-		body := ExchangeSessionBody{
-			RequestToken: &sessionRequestValue,
-			RequestHost:  &req.Host,
-			RequestIP:    &req.RemoteAddr,
-		}
+	cookies := p.extractCookies(req)
+	originalRequestURL := p.buildOriginalRequestURL(req, queryValues)
+	p.verifySession(rw, req, originalRequestURL, cookies, queryValues)
+}
 
-		jsonData, err := json.Marshal(body)
-		if err != nil {
-			http.Error(rw, msgInternalServerError, http.StatusInternalServerError)
-			return
-		}
+// handleSessionExchange attempts to exchange a request token for a session cookie.
+// Returns true if the request was fully handled (redirect or error), false to continue.
+func (p *Badger) handleSessionExchange(rw http.ResponseWriter, req *http.Request, queryValues url.Values) bool {
+	sessionRequestValue := queryValues.Get(p.resourceSessionRequestParam)
+	if sessionRequestValue == "" {
+		return false
+	}
 
-		verifyURL := fmt.Sprintf("%s/badger/exchange-session", p.apiBaseUrl)
-		resp, err := http.Post(verifyURL, "application/json", bytes.NewBuffer(jsonData))
-		if err != nil {
-			http.Error(rw, msgInternalServerError, http.StatusInternalServerError)
-			return
-		}
-		defer resp.Body.Close()
+	body := ExchangeSessionBody{
+		RequestToken: &sessionRequestValue,
+		RequestHost:  &req.Host,
+		RequestIP:    &req.RemoteAddr,
+	}
 
-		var result ExchangeSessionResponse
-		err = json.NewDecoder(resp.Body).Decode(&result)
-		if err != nil {
-			http.Error(rw, msgInternalServerError, http.StatusInternalServerError)
-			return
-		}
+	jsonData, err := json.Marshal(body)
+	if err != nil {
+		internalServerError(rw)
+		return true
+	}
 
-		if result.Data.Cookie != nil && *result.Data.Cookie != "" {
-			rw.Header().Add(headerSetCookie, *result.Data.Cookie)
+	url := fmt.Sprintf("%s/badger/exchange-session", p.apiBaseUrl)
+	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		internalServerError(rw)
+		return true
+	}
+	defer resp.Body.Close()
 
-			queryValues.Del(p.resourceSessionRequestParam)
-			cleanedQuery := queryValues.Encode()
-			originalRequestURL := fmt.Sprintf("%s://%s%s", p.getScheme(req), req.Host, req.URL.Path)
-			if cleanedQuery != "" {
-				originalRequestURL = fmt.Sprintf("%s?%s", originalRequestURL, cleanedQuery)
-			}
+	var result ExchangeSessionResponse
+	if err = json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		internalServerError(rw)
+		return true
+	}
 
-			if result.Data.ResponseHeaders != nil {
-				for key, value := range result.Data.ResponseHeaders {
-					rw.Header().Add(key, value)
-				}
-			}
+	if result.Data.Cookie == nil || *result.Data.Cookie == "" { // continue to normal verification
+		return false
+	}
 
-			fmt.Println("Got exchange token, redirecting to", originalRequestURL)
-			http.Redirect(rw, req, originalRequestURL, http.StatusFound)
-			return
+	rw.Header().Add(headerSetCookie, *result.Data.Cookie)
+	queryValues.Del(p.resourceSessionRequestParam)
+
+	originalRequestURL := p.buildOriginalRequestURL(req, queryValues)
+	if result.Data.ResponseHeaders != nil {
+		for k, v := range result.Data.ResponseHeaders {
+			rw.Header().Add(k, v)
 		}
 	}
 
-	cleanedQuery := queryValues.Encode()
-	originalRequestURL := fmt.Sprintf("%s://%s%s", p.getScheme(req), req.Host, req.URL.Path)
-	if cleanedQuery != "" {
-		originalRequestURL = fmt.Sprintf("%s?%s", originalRequestURL, cleanedQuery)
-	}
+	fmt.Println("Got exchange token, redirecting to", originalRequestURL)
+	http.Redirect(rw, req, originalRequestURL, http.StatusFound)
+	return true
+}
 
+func (p *Badger) verifySession(rw http.ResponseWriter, req *http.Request, originalRequestURL string, cookies map[string]string, queryValues url.Values) {
 	verifyURL := fmt.Sprintf("%s/badger/verify-session", p.apiBaseUrl)
-
-	headers := make(map[string]string)
-	for name, values := range req.Header {
-		if len(values) > 0 {
-			headers[name] = values[0] // Send only the first value for simplicity
-		}
-	}
-
-	queryParams := make(map[string]string)
-	for key, values := range queryValues {
-		if len(values) > 0 {
-			queryParams[key] = values[0]
-		}
-	}
 
 	cookieData := VerifyBody{
 		Sessions:           cookies,
@@ -166,19 +157,19 @@ func (p *Badger) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		RequestMethod:      &req.Method,
 		TLS:                req.TLS != nil,
 		RequestIP:          &req.RemoteAddr,
-		Headers:            headers,
-		Query:              queryParams,
+		Headers:            p.extractHeaders(req),
+		Query:              p.extractQueryParams(queryValues),
 	}
 
 	jsonData, err := json.Marshal(cookieData)
 	if err != nil {
-		http.Error(rw, msgInternalServerError, http.StatusInternalServerError) // TODO: redirect to error page
+		internalServerError(rw) // TODO: redirect to error page
 		return
 	}
 
 	resp, err := http.Post(verifyURL, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
-		http.Error(rw, msgInternalServerError, http.StatusInternalServerError)
+		internalServerError(rw)
 		return
 	}
 	defer resp.Body.Close()
@@ -188,20 +179,19 @@ func (p *Badger) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		http.Error(rw, msgInternalServerError, http.StatusInternalServerError)
+		internalServerError(rw)
 		return
 	}
 
 	var result VerifyResponse
-	err = json.NewDecoder(resp.Body).Decode(&result)
-	if err != nil {
-		http.Error(rw, msgInternalServerError, http.StatusInternalServerError)
+	if err = json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		internalServerError(rw)
 		return
 	}
 
 	if result.Data.ResponseHeaders != nil {
-		for key, value := range result.Data.ResponseHeaders {
-			rw.Header().Add(key, value)
+		for k, v := range result.Data.ResponseHeaders {
+			rw.Header().Add(k, v)
 		}
 	}
 
@@ -211,26 +201,57 @@ func (p *Badger) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if result.Data.Valid {
-
-		if result.Data.Username != nil {
-			req.Header.Add("Remote-User", *result.Data.Username)
-		}
-
-		if result.Data.Email != nil {
-			req.Header.Add("Remote-Email", *result.Data.Email)
-		}
-
-		if result.Data.Name != nil {
-			req.Header.Add("Remote-Name", *result.Data.Name)
-		}
-
-		fmt.Println("Badger: Valid session")
-		p.next.ServeHTTP(rw, req)
+	if !result.Data.Valid {
+		http.Error(rw, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
-	http.Error(rw, "Unauthorized", http.StatusUnauthorized)
+	// Attach identity headers
+	if result.Data.Username != nil {
+		req.Header.Add("Remote-User", *result.Data.Username)
+	}
+	if result.Data.Email != nil {
+		req.Header.Add("Remote-Email", *result.Data.Email)
+	}
+	if result.Data.Name != nil {
+		req.Header.Add("Remote-Name", *result.Data.Name)
+	}
+
+	fmt.Println("Badger: Valid session")
+	p.next.ServeHTTP(rw, req)
+}
+
+func (p *Badger) buildOriginalRequestURL(req *http.Request, queryValues url.Values) string {
+	cleanedQuery := queryValues.Encode()
+	base := fmt.Sprintf("%s://%s%s", p.getScheme(req), req.Host, req.URL.Path)
+	if cleanedQuery == "" {
+		return base
+	}
+	return fmt.Sprintf("%s?%s", base, cleanedQuery)
+}
+
+func (p *Badger) extractHeaders(req *http.Request) map[string]string {
+	result := make(map[string]string)
+	for name, values := range req.Header {
+		if len(values) > 0 {
+			result[name] = values[0]
+		}
+	}
+	return result
+}
+
+func (p *Badger) extractQueryParams(values url.Values) map[string]string {
+	result := make(map[string]string)
+	for k, v := range values {
+		if len(v) > 0 {
+			result[k] = v[0]
+		}
+	}
+	return result
+}
+
+func internalServerError(rw http.ResponseWriter) {
+	http.Error(rw, msgInternalServerError, http.StatusInternalServerError)
 }
 
 func (p *Badger) extractCookies(req *http.Request) map[string]string {
