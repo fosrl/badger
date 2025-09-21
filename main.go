@@ -9,6 +9,11 @@ import (
 	"strings"
 )
 
+const (
+	headerSetCookie        = "Set-Cookie"
+	msgInternalServerError = "Internal Server Error"
+)
+
 type Config struct {
 	APIBaseUrl                  string `json:"apiBaseUrl"`
 	UserSessionCookieName       string `json:"userSessionCookieName"`
@@ -89,14 +94,14 @@ func (p *Badger) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 		jsonData, err := json.Marshal(body)
 		if err != nil {
-			http.Error(rw, "Internal Server Error", http.StatusInternalServerError)
+			http.Error(rw, msgInternalServerError, http.StatusInternalServerError)
 			return
 		}
 
 		verifyURL := fmt.Sprintf("%s/badger/exchange-session", p.apiBaseUrl)
 		resp, err := http.Post(verifyURL, "application/json", bytes.NewBuffer(jsonData))
 		if err != nil {
-			http.Error(rw, "Internal Server Error", http.StatusInternalServerError)
+			http.Error(rw, msgInternalServerError, http.StatusInternalServerError)
 			return
 		}
 		defer resp.Body.Close()
@@ -104,12 +109,12 @@ func (p *Badger) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		var result ExchangeSessionResponse
 		err = json.NewDecoder(resp.Body).Decode(&result)
 		if err != nil {
-			http.Error(rw, "Internal Server Error", http.StatusInternalServerError)
+			http.Error(rw, msgInternalServerError, http.StatusInternalServerError)
 			return
 		}
 
 		if result.Data.Cookie != nil && *result.Data.Cookie != "" {
-			rw.Header().Add("Set-Cookie", *result.Data.Cookie)
+			rw.Header().Add(headerSetCookie, *result.Data.Cookie)
 
 			queryValues.Del(p.resourceSessionRequestParam)
 			cleanedQuery := queryValues.Encode()
@@ -167,30 +172,30 @@ func (p *Badger) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 	jsonData, err := json.Marshal(cookieData)
 	if err != nil {
-		http.Error(rw, "Internal Server Error", http.StatusInternalServerError) // TODO: redirect to error page
+		http.Error(rw, msgInternalServerError, http.StatusInternalServerError) // TODO: redirect to error page
 		return
 	}
 
 	resp, err := http.Post(verifyURL, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
-		http.Error(rw, "Internal Server Error", http.StatusInternalServerError)
+		http.Error(rw, msgInternalServerError, http.StatusInternalServerError)
 		return
 	}
 	defer resp.Body.Close()
 
-	for _, setCookie := range resp.Header["Set-Cookie"] {
-		rw.Header().Add("Set-Cookie", setCookie)
+	for _, setCookie := range resp.Header[headerSetCookie] {
+		rw.Header().Add(headerSetCookie, setCookie)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		http.Error(rw, "Internal Server Error", http.StatusInternalServerError)
+		http.Error(rw, msgInternalServerError, http.StatusInternalServerError)
 		return
 	}
 
 	var result VerifyResponse
 	err = json.NewDecoder(resp.Body).Decode(&result)
 	if err != nil {
-		http.Error(rw, "Internal Server Error", http.StatusInternalServerError)
+		http.Error(rw, msgInternalServerError, http.StatusInternalServerError)
 		return
 	}
 
