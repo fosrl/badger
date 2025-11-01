@@ -1,5 +1,6 @@
-displayName: Fossorial Badger
+displayName: Pangolin (Badger)
 type: middleware
+iconPath: .assets/icon.png
 
 import: github.com/fosrl/badger
 
