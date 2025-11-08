@@ -10,7 +10,7 @@ Learn how to set up [Pangolin](https://github.com/fosrl/pangolin) and Badger in 
 
 ## Configuration
 
-Badger requires the following configuration parameters to be specified in your [Traefik configuration file](https://doc.traefik.io/traefik/getting-started/configuration-overview/). These coincide with the separate [Pangolin](https://github.com/fosrl/pangolin) configuration file.
+Badger requires the following configuration parameters to be specified in your [Traefik configuration file](https://doc.traefik.io/traefik/getting-started/configuration-overview/). These coincide with the separate [Pangolin](https://github.com/fosrl/pangolin) configuration file. These options do not need to be configured unless you need to override the automatically provided config from Pangolin.
 
 ### Configuration Options
 
