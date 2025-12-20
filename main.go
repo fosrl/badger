@@ -38,13 +38,14 @@ type VerifyBody struct {
 
 type VerifyResponse struct {
 	Data struct {
-		Valid           bool              `json:"valid"`
-		RedirectURL     *string           `json:"redirectUrl"`
-		Username        *string           `json:"username,omitempty"`
-		Email           *string           `json:"email,omitempty"`
-		Name            *string           `json:"name,omitempty"`
-		Role            *string           `json:"role,omitempty"`
-		ResponseHeaders map[string]string `json:"responseHeaders,omitempty"`
+		HeaderAuthChallenged bool              `json:"headerAuthChallenged"`
+		Valid                bool              `json:"valid"`
+		RedirectURL          *string           `json:"redirectUrl"`
+		Username             *string           `json:"username,omitempty"`
+		Email                *string           `json:"email,omitempty"`
+		Name                 *string           `json:"name,omitempty"`
+		Role                 *string           `json:"role,omitempty"`
+		ResponseHeaders      map[string]string `json:"responseHeaders,omitempty"`
 	} `json:"data"`
 }
 
@@ -195,10 +196,28 @@ func (p *Badger) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	req.Header.Del("Remote-User")
+	req.Header.Del("Remote-Email")
+	req.Header.Del("Remote-Name")
+
 	if result.Data.ResponseHeaders != nil {
 		for key, value := range result.Data.ResponseHeaders {
 			rw.Header().Add(key, value)
 		}
+	}
+
+	if result.Data.HeaderAuthChallenged {
+		fmt.Println("Badger: challenging client for header authentication")
+		rw.Header().Add("WWW-Authenticate", "Basic realm=\"pangolin\"")
+
+		if result.Data.RedirectURL != nil && *result.Data.RedirectURL != "" {
+			rw.Header().Set("Content-Type", "text/html; charset=utf-8")
+			rw.WriteHeader(http.StatusUnauthorized)
+			rw.Write([]byte(p.renderRedirectPage(*result.Data.RedirectURL)))
+		} else {
+			http.Error(rw, "Unauthorized", http.StatusUnauthorized)
+		}
+		return
 	}
 
 	if result.Data.RedirectURL != nil && *result.Data.RedirectURL != "" {
@@ -254,4 +273,48 @@ func (p *Badger) getScheme(req *http.Request) string {
 		return "https"
 	}
 	return "http"
+}
+
+func (p *Badger) renderRedirectPage(redirectURL string) string {
+	return fmt.Sprintf(`<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Redirecting...</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f5f5f5;
+        }
+        .container {
+            text-align: center;
+            padding: 2rem;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        a {
+            color: #0066cc;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <p>Redirecting...</p>
+        <p>If you are not redirected automatically, <a href="%s">click here</a>.</p>
+    </div>
+    <script>
+        window.location.href = "%s";
+    </script>
+</body>
+</html>`, redirectURL, redirectURL)
 }
