@@ -262,6 +262,7 @@ func (p *Badger) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	req.Header.Del("Remote-User")
 	req.Header.Del("Remote-Email")
 	req.Header.Del("Remote-Name")
+	req.Header.Del("Remote-Role")
 
 	if result.Data.ResponseHeaders != nil {
 		for key, value := range result.Data.ResponseHeaders {
