@@ -1,8 +1,8 @@
 # Pangolin Middleware: Badger
 
-Badger is a middleware plugin designed to work with the Traefik reverse proxy in conjunction with [Pangolin](https://github.com/fosrl/pangolin), an identity-aware reverse proxy and VPN. Badger acts as an authentication bouncer, ensuring only authenticated and authorized requests are allowed through the proxy.
+Badger is a middleware plugin designed to work with Traefik in conjunction with [Pangolin](https://github.com/fosrl/pangolin), an identity-aware reverse proxy and zero-trust VPN. Badger acts as an authentication bouncer, ensuring only authenticated and authorized requests are allowed through the proxy.
 
-> [!NOTE] 
+> [!NOTE]
 > Badger can also be used standalone for IP handling (Cloudflare and custom proxy support) without Pangolin. Simply set `disableForwardAuth: true` in your configuration. See the [Disabling Forward Auth](#disabling-forward-auth) section below for details.
 
 This plugin is **required** to be installed alongside [Pangolin](https://github.com/fosrl/pangolin) to enforce secure authentication and session management.
@@ -29,13 +29,10 @@ resourceSessionRequestParam: "p_session_request"
 
 To disable forward auth and only use IP handling, set `disableForwardAuth: true`. When enabled, all requests pass through without authentication, and the required configuration options above are not needed:
 
+Only do this if you do not need Pangolin's authentication features and only want IP handling.
+
 ```yaml
 disableForwardAuth: true
-
-# IP handling configuration (optional)
-trustip:
-  - "10.0.0.0/8"
-customIPHeader: "X-Forwarded-For"
 ```
 
 ### IP Handling Configuration
@@ -53,6 +50,8 @@ No additional configuration needed. Badger automatically:
 #### Using without Cloudflare
 
 If you're using a different proxy or load balancer, configure custom trusted IPs and/or a custom IP header:
+
+Ensure you always disable the default Cloudflare IP ranges by setting `disableDefaultCFIPs: true` and provide your own trusted IP ranges in CIDR format under `trustip` if using a different proxy.
 
 ```yaml
 apiBaseUrl: "http://localhost:3001/api/v1"
@@ -73,18 +72,17 @@ customIPHeader: "X-Forwarded-For"
 
 ### Configuration Options Reference
 
-| Option                        | Type     | Required* | Default | Description                                                                         |
-| ----------------------------- | -------- | --------- | ------- | ----------------------------------------------------------------------------------- |
-| `disableForwardAuth`          | bool     | No        | `false` | Disable forward auth; only IP handling is performed                                |
-| `apiBaseUrl`                  | string   | Yes*      | -       | Base URL of the Pangolin API                                                        |
-| `userSessionCookieName`       | string   | Yes*      | -       | Cookie name for user sessions                                                       |
-| `resourceSessionRequestParam` | string   | Yes*      | -       | Query parameter name for resource session requests                                  |
-| `trustip`                     | []string | No        | `[]`    | Array of trusted IP ranges in CIDR format                                           |
-| `disableDefaultCFIPs`         | bool     | No        | `false` | Disable default Cloudflare IP ranges                                                |
-| `customIPHeader`              | string   | No        | `""`    | Custom header name to extract IP from (only used if request is from trusted source) |
+| Option                        | Type     | Required\* | Default | Description                                                                         |
+| ----------------------------- | -------- | ---------- | ------- | ----------------------------------------------------------------------------------- |
+| `disableForwardAuth`          | bool     | No         | `false` | Disable forward auth; only IP handling is performed                                 |
+| `apiBaseUrl`                  | string   | Yes\*      | -       | Base URL of the Pangolin API                                                        |
+| `userSessionCookieName`       | string   | Yes\*      | -       | Cookie name for user sessions                                                       |
+| `resourceSessionRequestParam` | string   | Yes\*      | -       | Query parameter name for resource session requests                                  |
+| `trustip`                     | []string | No         | `[]`    | Array of trusted IP ranges in CIDR format                                           |
+| `disableDefaultCFIPs`         | bool     | No         | `false` | Disable default Cloudflare IP ranges                                                |
+| `customIPHeader`              | string   | No         | `""`    | Custom header name to extract IP from (only used if request is from trusted source) |
 
 \* Required only when `disableForwardAuth` is `false` (default)
-
 
 ## Updating Cloudflare IPs
 
