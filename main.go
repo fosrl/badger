@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/fosrl/badger/ips"
+	"github.com/fosrl/badger/version"
 )
 
 type Config struct {
@@ -52,6 +53,7 @@ type VerifyBody struct {
 	RequestIP          *string           `json:"requestIp,omitempty"`
 	Headers            map[string]string `json:"headers,omitempty"`
 	Query              map[string]string `json:"query,omitempty"`
+	BadgerVersion      string            `json:"badgerVersion,omitempty"`
 }
 
 type VerifyResponse struct {
@@ -64,6 +66,7 @@ type VerifyResponse struct {
 		Name                 *string           `json:"name,omitempty"`
 		Role                 *string           `json:"role,omitempty"`
 		ResponseHeaders      map[string]string `json:"responseHeaders,omitempty"`
+		PangolinVersion      *string           `json:"pangolinVersion,omitempty"`
 	} `json:"data"`
 }
 
@@ -228,6 +231,7 @@ func (p *Badger) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		RequestIP:          &realIP,
 		Headers:            headers,
 		Query:              queryParams,
+		BadgerVersion:      version.Version,
 	}
 
 	jsonData, err := json.Marshal(cookieData)
