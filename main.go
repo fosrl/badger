@@ -312,6 +312,9 @@ func (p *Badger) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			req.Header.Add("Remote-Role", *result.Data.Role)
 		}
 
+		p.stripSessionCookies(req)
+		p.stripSessionParam(req)
+
 		fmt.Println("Badger: Valid session")
 		p.next.ServeHTTP(rw, req)
 		return
@@ -412,6 +415,44 @@ func (p *Badger) getRealIP(req *http.Request) string {
 		return req.RemoteAddr
 	}
 	return ip
+}
+
+func (p *Badger) stripSessionParam(req *http.Request) {
+	query := req.URL.Query()
+	if query.Has(p.resourceSessionRequestParam) {
+		query.Del(p.resourceSessionRequestParam)
+		req.URL.RawQuery = query.Encode()
+	}
+}
+
+// stripSessionCookies removes session cookies from the request before forwarding to the backend.
+// We parse the Cookie header as a string rather than using req.Cookies() + re-encoding so we
+// preserve the exact header format; the Cookie request header only carries name=value pairs
+// (domain/path are Set-Cookie response attributes and are not sent in requests per RFC 6265).
+func (p *Badger) stripSessionCookies(req *http.Request) {
+	cookieHeader := req.Header.Get("Cookie")
+	if cookieHeader == "" {
+		return
+	}
+
+	var remaining []string
+	for part := range strings.SplitSeq(cookieHeader, ";") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		parts := strings.SplitN(part, "=", 2)
+		name := strings.TrimSpace(parts[0])
+		if !strings.HasPrefix(name, p.userSessionCookieName) {
+			remaining = append(remaining, part)
+		}
+	}
+
+	if len(remaining) > 0 {
+		req.Header.Set("Cookie", strings.Join(remaining, "; "))
+	} else {
+		req.Header.Del("Cookie")
+	}
 }
 
 func (p *Badger) isTrustedIP(remoteAddr string) bool {
