@@ -440,54 +440,35 @@ func (p *Badger) stripSessionParam(req *http.Request) {
 }
 
 // stripSessionCookies removes session cookies from the request before forwarding to the backend.
-// Cookie request headers only contain name=value pairs (Set-Cookie attributes like Path/Domain
-// are response-only), so we filter parsed request cookies and rebuild the Cookie header.
+// It processes raw Cookie header pairs so non-target cookies are preserved as-is.
 func (p *Badger) stripSessionCookies(req *http.Request) {
 	cookieHeaders := req.Header.Values("Cookie")
 	if len(cookieHeaders) == 0 {
 		return
 	}
 
-	var remaining []*http.Cookie
+	var remainingPairs []string
 	for _, headerValue := range cookieHeaders {
-		parsedCookies, err := http.ParseCookie(headerValue)
-		if err != nil {
-			// Best-effort fallback for malformed Cookie headers.
-			for _, part := range strings.Split(headerValue, ";") {
-				part = strings.TrimSpace(part)
-				if part == "" {
-					continue
-				}
-				name, value, hasValue := strings.Cut(part, "=")
-				name = strings.TrimSpace(name)
-				if strings.HasPrefix(name, p.userSessionCookieName) {
-					continue
-				}
-				if hasValue {
-					remaining = append(remaining, &http.Cookie{
-						Name:  name,
-						Value: strings.TrimSpace(value),
-					})
-				}
+		for _, part := range strings.Split(headerValue, ";") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
 			}
-			continue
-		}
-
-		for _, cookie := range parsedCookies {
-			if !strings.HasPrefix(cookie.Name, p.userSessionCookieName) {
-				remaining = append(remaining, cookie)
+			name, _, _ := strings.Cut(part, "=")
+			name = strings.TrimSpace(name)
+			if !strings.HasPrefix(name, p.userSessionCookieName) {
+				remainingPairs = append(remainingPairs, part)
 			}
 		}
 	}
 
-	req.Header.Del("Cookie")
-	if len(remaining) == 0 {
+	if len(remainingPairs) == 0 {
+		req.Header.Del("Cookie")
 		return
 	}
 
-	for _, cookie := range remaining {
-		req.AddCookie(cookie)
-	}
+	// Keep a single canonical Cookie header while preserving surviving name=value pairs.
+	req.Header.Set("Cookie", strings.Join(remainingPairs, "; "))
 }
 
 func (p *Badger) isTrustedIP(remoteAddr string) bool {
