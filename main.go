@@ -17,7 +17,9 @@ type Config struct {
 	APIBaseUrl                  string   `json:"apiBaseUrl,omitempty"`
 	UserSessionCookieName       string   `json:"userSessionCookieName,omitempty"`
 	ResourceSessionRequestParam string   `json:"resourceSessionRequestParam,omitempty"`
-	AccessTokenQueryParam       string   `json:"accessTokenQueryParam,omitempty"` // Deprecated: use ResourceSessionRequestParam
+	AccessTokenQueryParam       string   `json:"accessTokenQueryParam,omitempty"`
+	AccessTokenIDHeader         string   `json:"accessTokenIdHeader,omitempty"`
+	AccessTokenHeader           string   `json:"accessTokenHeader,omitempty"`
 	DisableForwardAuth          bool     `json:"disableForwardAuth,omitempty"`
 	TrustIP                     []string `json:"trustip,omitempty"`
 	DisableDefaultCFIPs         bool     `json:"disableDefaultCFIPs,omitempty"`
@@ -39,6 +41,8 @@ type Badger struct {
 	userSessionCookieName       string
 	resourceSessionRequestParam string
 	accessTokenQueryParam       string
+	accessTokenIDHeader         string
+	accessTokenHeader           string
 	disableForwardAuth          bool
 	trustIP                     []*net.IPNet
 	customIPHeader              string
@@ -98,6 +102,8 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
 		userSessionCookieName:       config.UserSessionCookieName,
 		resourceSessionRequestParam: config.ResourceSessionRequestParam,
 		accessTokenQueryParam:       config.AccessTokenQueryParam,
+		accessTokenIDHeader:         config.AccessTokenIDHeader,
+		accessTokenHeader:           config.AccessTokenHeader,
 		disableForwardAuth:          config.DisableForwardAuth,
 		customIPHeader:              config.CustomIPHeader,
 	}
@@ -317,8 +323,7 @@ func (p *Badger) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 		p.stripSessionCookies(req)
 		p.stripSessionParam(req)
-		req.Header.Del("P-Access-Token-Id")
-		req.Header.Del("P-Access-Token")
+		p.stripAccessTokenHeaders(req)
 
 		fmt.Println("Badger: Valid session")
 		p.next.ServeHTTP(rw, req)
@@ -436,6 +441,15 @@ func (p *Badger) stripSessionParam(req *http.Request) {
 	if modified {
 		req.URL.RawQuery = query.Encode()
 		req.RequestURI = req.URL.RequestURI()
+	}
+}
+
+func (p *Badger) stripAccessTokenHeaders(req *http.Request) {
+	if p.accessTokenIDHeader != "" {
+		req.Header.Del(p.accessTokenIDHeader)
+	}
+	if p.accessTokenHeader != "" {
+		req.Header.Del(p.accessTokenHeader)
 	}
 }
 
