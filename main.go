@@ -17,6 +17,9 @@ type Config struct {
 	APIBaseUrl                  string   `json:"apiBaseUrl,omitempty"`
 	UserSessionCookieName       string   `json:"userSessionCookieName,omitempty"`
 	ResourceSessionRequestParam string   `json:"resourceSessionRequestParam,omitempty"`
+	AccessTokenQueryParam       string   `json:"accessTokenQueryParam,omitempty"`
+	AccessTokenIDHeader         string   `json:"accessTokenIdHeader,omitempty"`
+	AccessTokenHeader           string   `json:"accessTokenHeader,omitempty"`
 	DisableForwardAuth          bool     `json:"disableForwardAuth,omitempty"`
 	TrustIP                     []string `json:"trustip,omitempty"`
 	DisableDefaultCFIPs         bool     `json:"disableDefaultCFIPs,omitempty"`
@@ -37,6 +40,9 @@ type Badger struct {
 	apiBaseUrl                  string
 	userSessionCookieName       string
 	resourceSessionRequestParam string
+	accessTokenQueryParam       string
+	accessTokenIDHeader         string
+	accessTokenHeader           string
 	disableForwardAuth          bool
 	trustIP                     []*net.IPNet
 	customIPHeader              string
@@ -95,6 +101,9 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
 		apiBaseUrl:                  config.APIBaseUrl,
 		userSessionCookieName:       config.UserSessionCookieName,
 		resourceSessionRequestParam: config.ResourceSessionRequestParam,
+		accessTokenQueryParam:       config.AccessTokenQueryParam,
+		accessTokenIDHeader:         config.AccessTokenIDHeader,
+		accessTokenHeader:           config.AccessTokenHeader,
 		disableForwardAuth:          config.DisableForwardAuth,
 		customIPHeader:              config.CustomIPHeader,
 	}
@@ -312,6 +321,10 @@ func (p *Badger) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			req.Header.Add("Remote-Role", *result.Data.Role)
 		}
 
+		p.stripSessionCookies(req)
+		p.stripSessionParam(req)
+		p.stripAccessTokenHeaders(req)
+
 		fmt.Println("Badger: Valid session")
 		p.next.ServeHTTP(rw, req)
 		return
@@ -412,6 +425,64 @@ func (p *Badger) getRealIP(req *http.Request) string {
 		return req.RemoteAddr
 	}
 	return ip
+}
+
+func (p *Badger) stripSessionParam(req *http.Request) {
+	query := req.URL.Query()
+	modified := false
+	if query.Has(p.resourceSessionRequestParam) {
+		query.Del(p.resourceSessionRequestParam)
+		modified = true
+	}
+	if p.accessTokenQueryParam != "" && query.Has(p.accessTokenQueryParam) {
+		query.Del(p.accessTokenQueryParam)
+		modified = true
+	}
+	if modified {
+		req.URL.RawQuery = query.Encode()
+		req.RequestURI = req.URL.RequestURI()
+	}
+}
+
+func (p *Badger) stripAccessTokenHeaders(req *http.Request) {
+	if p.accessTokenIDHeader != "" {
+		req.Header.Del(p.accessTokenIDHeader)
+	}
+	if p.accessTokenHeader != "" {
+		req.Header.Del(p.accessTokenHeader)
+	}
+}
+
+// stripSessionCookies removes session cookies from the request before forwarding to the backend.
+// It processes raw Cookie header pairs so non-target cookies are preserved as-is.
+func (p *Badger) stripSessionCookies(req *http.Request) {
+	cookieHeaders := req.Header.Values("Cookie")
+	if len(cookieHeaders) == 0 {
+		return
+	}
+
+	var remainingPairs []string
+	for _, headerValue := range cookieHeaders {
+		for _, part := range strings.Split(headerValue, ";") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			name, _, _ := strings.Cut(part, "=")
+			name = strings.TrimSpace(name)
+			if !strings.HasPrefix(name, p.userSessionCookieName) {
+				remainingPairs = append(remainingPairs, part)
+			}
+		}
+	}
+
+	if len(remainingPairs) == 0 {
+		req.Header.Del("Cookie")
+		return
+	}
+
+	// Keep a single canonical Cookie header while preserving surviving name=value pairs.
+	req.Header.Set("Cookie", strings.Join(remainingPairs, "; "))
 }
 
 func (p *Badger) isTrustedIP(remoteAddr string) bool {
