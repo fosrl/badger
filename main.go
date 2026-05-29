@@ -61,6 +61,7 @@ type VerifyResponse struct {
 		HeaderAuthChallenged bool              `json:"headerAuthChallenged"`
 		Valid                bool              `json:"valid"`
 		RedirectURL          *string           `json:"redirectUrl"`
+		UserId               *string           `json:"userId,omitempty"`
 		Username             *string           `json:"username,omitempty"`
 		Email                *string           `json:"email,omitempty"`
 		Name                 *string           `json:"name,omitempty"`
@@ -267,6 +268,7 @@ func (p *Badger) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	req.Header.Del("Remote-Email")
 	req.Header.Del("Remote-Name")
 	req.Header.Del("Remote-Role")
+	req.Header.Del("Remote-User-Id")
 
 	if result.Data.ResponseHeaders != nil {
 		for key, value := range result.Data.ResponseHeaders {
@@ -295,6 +297,10 @@ func (p *Badger) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	if result.Data.Valid {
+
+		if result.Data.UserId != nil {
+			req.Header.Add("Remote-User-Id", *result.Data.UserId)
+		}
 
 		if result.Data.Username != nil {
 			req.Header.Add("Remote-User", *result.Data.Username)
