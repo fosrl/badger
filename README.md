@@ -70,20 +70,6 @@ trustip:
 customIPHeader: "X-Forwarded-For"
 ```
 
-### Configuration Options Reference
-
-| Option                        | Type     | Required\* | Default | Description                                                                         |
-| ----------------------------- | -------- | ---------- | ------- | ----------------------------------------------------------------------------------- |
-| `disableForwardAuth`          | bool     | No         | `false` | Disable forward auth; only IP handling is performed                                 |
-| `apiBaseUrl`                  | string   | Yes\*      | -       | Base URL of the Pangolin API                                                        |
-| `userSessionCookieName`       | string   | Yes\*      | -       | Cookie name for user sessions                                                       |
-| `resourceSessionRequestParam` | string   | Yes\*      | -       | Query parameter name for resource session requests                                  |
-| `trustip`                     | []string | No         | `[]`    | Array of trusted IP ranges in CIDR format                                           |
-| `disableDefaultCFIPs`         | bool     | No         | `false` | Disable default Cloudflare IP ranges                                                |
-| `customIPHeader`              | string   | No         | `""`    | Custom header name to extract IP from (only used if request is from trusted source) |
-
-\* Required only when `disableForwardAuth` is `false` (default)
-
 ## Updating Cloudflare IPs
 
 To update the Cloudflare IP ranges, run:
