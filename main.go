@@ -68,6 +68,7 @@ type VerifyResponse struct {
 		Valid                bool              `json:"valid"`
 		RedirectURL          *string           `json:"redirectUrl"`
 		UserId               *string           `json:"userId,omitempty"`
+		DontStripSession     bool              `json:"dontStripSession,omitempty"`
 		Username             *string           `json:"username,omitempty"`
 		Email                *string           `json:"email,omitempty"`
 		Name                 *string           `json:"name,omitempty"`
@@ -327,9 +328,11 @@ func (p *Badger) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			req.Header.Add("Remote-Role", *result.Data.Role)
 		}
 
-		p.stripSessionCookies(req)
-		p.stripSessionParam(req)
-		p.stripAccessTokenHeaders(req)
+		if !result.Data.DontStripSession {
+			p.stripSessionParam(req)
+			p.stripSessionCookies(req)
+			p.stripAccessTokenHeaders(req)
+		}
 
 		fmt.Println("Badger: Valid session")
 		p.next.ServeHTTP(rw, req)
