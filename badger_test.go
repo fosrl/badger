@@ -29,16 +29,16 @@ func TestCreateConfig(t *testing.T) {
 
 func TestNewRequiresFieldsWhenForwardAuthEnabled(t *testing.T) {
 	cases := map[string]*badger.Config{
-		"missing apiBaseUrl": {
+		"missing apiBaseURL": {
 			UserSessionCookieName:       "p_session_token",
 			ResourceSessionRequestParam: "p_session_request",
 		},
 		"missing userSessionCookieName": {
-			APIBaseUrl:                  "http://localhost:3001",
+			APIBaseURL:                  "http://localhost:3001",
 			ResourceSessionRequestParam: "p_session_request",
 		},
 		"missing resourceSessionRequestParam": {
-			APIBaseUrl:            "http://localhost:3001",
+			APIBaseURL:            "http://localhost:3001",
 			UserSessionCookieName: "p_session_token",
 		},
 	}
@@ -163,7 +163,7 @@ func TestStripSessionCookiesPreservesUnrelated(t *testing.T) {
 		forwarded = req
 	})
 	cfg := &badger.Config{
-		APIBaseUrl:                  verify.URL,
+		APIBaseURL:                  verify.URL,
 		UserSessionCookieName:       "p_session_token",
 		ResourceSessionRequestParam: "p_session_request",
 		DisableDefaultCFIPs:         true,
