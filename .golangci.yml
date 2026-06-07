@@ -1,0 +1,156 @@
+# yaml-language-server: $schema=https://golangci-lint.run/jsonschema/golangci.jsonschema.json
+
+version: "2"
+run:
+  timeout: 3m
+
+linters:
+  default: standard
+  enable:
+    # Existing / default-critical checks.
+    - govet
+    - staticcheck
+    - ineffassign
+    - unused
+    - misspell
+
+    # Error handling / correctness.
+    - errcheck
+    - errorlint
+    - errname
+    - nilerr
+    - nilnesserr
+    - unconvert
+    - unparam
+    - wastedassign
+
+    # HTTP / middleware safety.
+    - bodyclose
+    - noctx
+    # - canonicalheader # Too noisy, especially for tests.
+
+    # Security.
+    - gosec
+    - bidichk
+
+    # Maintainability, but with relaxed thresholds.
+    - revive
+    - gocyclo
+    - funlen
+    - goconst
+    - gocritic
+
+    # Dependency/import hygiene.
+    - depguard
+    - gomoddirectives
+
+    # Comments / TODO handling.
+    - godox
+
+  settings:
+    govet:
+      enable-all: true
+      disable:
+        # Too noisy
+        - fieldalignment
+
+    misspell:
+      locale: US
+
+    gocyclo:
+      min-complexity: 20
+
+    funlen:
+      lines: -1
+      statements: 80
+
+    goconst:
+      # Avoid noisy suggestions for small repeated strings.
+      min-len: 5
+      min-occurrences: 4
+
+    godox:
+      keywords:
+        - FIXME
+        - BUG
+
+    depguard:
+      rules:
+        main:
+          files:
+            - $all
+            - "!$test"
+          allow:
+            - $gostd
+            - github.com/fosrl/badger/ips
+            - github.com/fosrl/badger/version
+
+        tests:
+          files:
+            - $test
+          allow:
+            - $gostd
+            - github.com/fosrl/badger
+            - github.com/fosrl/badger/ips
+            - github.com/fosrl/badger/version
+
+    revive:
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: error-return
+        - name: error-strings
+        - name: error-naming
+        - name: errorf
+        - name: exported
+          disabled: true
+        - name: if-return
+        - name: increment-decrement
+        - name: indent-error-flow
+        - name: package-comments
+          disabled: true
+        - name: range
+        - name: receiver-naming
+        - name: redefines-builtin-id
+        - name: struct-tag
+        - name: superfluous-else
+        - name: time-naming
+        - name: unreachable-code
+        - name: unused-parameter
+          disabled: true
+        - name: var-declaration
+        - name: var-naming
+
+  exclusions:
+    # Keep default golangci-lint exclusions enabled, but add repo-specific rules.
+    generated: strict
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+
+    rules:
+      # Test files are allowed to be longer and more repetitive.
+      - path: '(.+)_test\.go'
+        linters:
+          - funlen
+          - goconst
+          - dupl
+          - noctx
+
+      # Cloudflare IP list is intentionally a large literal allowlist.
+      - path: '^ips/ips\.go$'
+        linters:
+          - goconst
+          - funlen
+          - revive
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+output:
+  show-stats: true
