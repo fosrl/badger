@@ -1,3 +1,3 @@
 module github.com/fosrl/badger
 
-go 1.25
+go 1.26
