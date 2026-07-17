@@ -158,6 +158,7 @@ func (p *Badger) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	cookies := p.extractCookies(req)
 
 	queryValues := req.URL.Query()
+	hadAccessTokenQuery := p.accessTokenQueryParam != "" && queryValues.Get(p.accessTokenQueryParam) != ""
 
 	if sessionRequestValue := queryValues.Get(p.resourceSessionRequestParam); sessionRequestValue != "" {
 		body := ExchangeSessionBody{
@@ -261,6 +262,7 @@ func (p *Badger) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	for _, setCookie := range resp.Header["Set-Cookie"] {
 		rw.Header().Add("Set-Cookie", setCookie)
 	}
+	receivedSetCookie := len(resp.Header["Set-Cookie"]) > 0
 
 	if resp.StatusCode != http.StatusOK {
 		http.Error(rw, "Internal Server Error", http.StatusInternalServerError)
@@ -307,6 +309,18 @@ func (p *Badger) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	if result.Data.Valid {
+		if hadAccessTokenQuery && receivedSetCookie && req.Method == http.MethodGet {
+			cleanQuery := req.URL.Query()
+			cleanQuery.Del(p.accessTokenQueryParam)
+			cleaned := cleanQuery.Encode()
+			cleanURL := fmt.Sprintf("%s://%s%s", p.getScheme(req), req.Host, req.URL.Path)
+			if cleaned != "" {
+				cleanURL = fmt.Sprintf("%s?%s", cleanURL, cleaned)
+			}
+			fmt.Println("Badger: Access token session created, redirecting to", cleanURL)
+			http.Redirect(rw, req, cleanURL, http.StatusFound)
+			return
+		}
 
 		if result.Data.UserId != nil {
 			req.Header.Add("Remote-User-Id", *result.Data.UserId)
