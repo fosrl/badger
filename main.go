@@ -73,6 +73,7 @@ type VerifyResponse struct {
 		Email                *string           `json:"email,omitempty"`
 		Name                 *string           `json:"name,omitempty"`
 		Role                 *string           `json:"role,omitempty"`
+		VirtualApiKeyId      *string           `json:"virtualApiKeyId,omitempty"`
 		ResponseHeaders      map[string]string `json:"responseHeaders,omitempty"`
 		PangolinVersion      *string           `json:"pangolinVersion,omitempty"`
 	} `json:"data"`
@@ -281,6 +282,7 @@ func (p *Badger) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	req.Header.Del("Remote-Name")
 	req.Header.Del("Remote-Role")
 	req.Header.Del("Remote-User-Id")
+	req.Header.Del("Remote-Virtual-Api-Key-Id")
 
 	if result.Data.ResponseHeaders != nil {
 		for key, value := range result.Data.ResponseHeaders {
@@ -340,6 +342,10 @@ func (p *Badger) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 		if result.Data.Role != nil {
 			req.Header.Add("Remote-Role", *result.Data.Role)
+		}
+
+		if result.Data.VirtualApiKeyId != nil {
+			req.Header.Add("Remote-Virtual-Api-Key-Id", *result.Data.VirtualApiKeyId)
 		}
 
 		if !result.Data.DontStripSession {
