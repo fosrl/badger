@@ -62,20 +62,27 @@ type VerifyBody struct {
 	BadgerVersion      string            `json:"badgerVersion,omitempty"`
 }
 
+type ClientErrorResponse struct {
+	StatusCode  int    `json:"statusCode,omitempty"`
+	ContentType string `json:"contentType,omitempty"`
+	Body        string `json:"body"`
+}
+
 type VerifyResponse struct {
 	Data struct {
-		HeaderAuthChallenged bool              `json:"headerAuthChallenged"`
-		Valid                bool              `json:"valid"`
-		RedirectURL          *string           `json:"redirectUrl"`
-		UserId               *string           `json:"userId,omitempty"`
-		DontStripSession     bool              `json:"dontStripSession,omitempty"`
-		Username             *string           `json:"username,omitempty"`
-		Email                *string           `json:"email,omitempty"`
-		Name                 *string           `json:"name,omitempty"`
-		Role                 *string           `json:"role,omitempty"`
-		VirtualApiKeyId      *string           `json:"virtualApiKeyId,omitempty"`
-		ResponseHeaders      map[string]string `json:"responseHeaders,omitempty"`
-		PangolinVersion      *string           `json:"pangolinVersion,omitempty"`
+		HeaderAuthChallenged bool                 `json:"headerAuthChallenged"`
+		Valid                bool                 `json:"valid"`
+		RedirectURL          *string              `json:"redirectUrl"`
+		UserId               *string              `json:"userId,omitempty"`
+		DontStripSession     bool                 `json:"dontStripSession,omitempty"`
+		Username             *string              `json:"username,omitempty"`
+		Email                *string              `json:"email,omitempty"`
+		Name                 *string              `json:"name,omitempty"`
+		Role                 *string              `json:"role,omitempty"`
+		VirtualApiKeyId      *string              `json:"virtualApiKeyId,omitempty"`
+		ResponseHeaders      map[string]string    `json:"responseHeaders,omitempty"`
+		PangolinVersion      *string              `json:"pangolinVersion,omitempty"`
+		ClientError          *ClientErrorResponse `json:"clientError,omitempty"`
 	} `json:"data"`
 }
 
@@ -356,6 +363,21 @@ func (p *Badger) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 		fmt.Println("Badger: Valid session")
 		p.next.ServeHTTP(rw, req)
+		return
+	}
+
+	if result.Data.ClientError != nil && result.Data.ClientError.Body != "" {
+		statusCode := result.Data.ClientError.StatusCode
+		if statusCode == 0 {
+			statusCode = http.StatusUnauthorized
+		}
+		contentType := result.Data.ClientError.ContentType
+		if contentType == "" {
+			contentType = "application/json"
+		}
+		rw.Header().Set("Content-Type", contentType)
+		rw.WriteHeader(statusCode)
+		rw.Write([]byte(result.Data.ClientError.Body))
 		return
 	}
 
