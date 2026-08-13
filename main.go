@@ -24,6 +24,7 @@ type Config struct {
 	TrustIP                     []string `json:"trustip,omitempty"`
 	DisableDefaultCFIPs         bool     `json:"disableDefaultCFIPs,omitempty"`
 	CustomIPHeader              string   `json:"customIPHeader,omitempty"`
+	RealIPHeader                string   `json:"realIpHeader,omitempty"`
 	RemoteUserIDHeader          string   `json:"remoteUserIdHeader,omitempty"`
 	RemoteVirtualApiKeyIDHeader string   `json:"remoteVirtualApiKeyIdHeader,omitempty"`
 	RemoteUserHeader            string   `json:"remoteUserHeader,omitempty"`
@@ -59,6 +60,7 @@ type Badger struct {
 	disableForwardAuth          bool
 	trustIP                     []*net.IPNet
 	customIPHeader              string
+	realIPHeader                string
 	remoteUserIDHeader          string
 	remoteVirtualApiKeyIDHeader string
 	remoteUserHeader            string
@@ -142,6 +144,7 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
 		accessTokenHeader:           config.AccessTokenHeader,
 		disableForwardAuth:          config.DisableForwardAuth,
 		customIPHeader:              config.CustomIPHeader,
+		realIPHeader:                config.RealIPHeader,
 		remoteUserIDHeader:          stringOrDefault(config.RemoteUserIDHeader, defaultRemoteUserIDHeader),
 		remoteVirtualApiKeyIDHeader: stringOrDefault(config.RemoteVirtualApiKeyIDHeader, defaultRemoteVirtualApiKeyIDHeader),
 		remoteUserHeader:            stringOrDefault(config.RemoteUserHeader, defaultRemoteUserHeader),
@@ -608,5 +611,16 @@ func (p *Badger) setIPHeaders(req *http.Request, realIP string) {
 		// Remove CF headers if present
 		req.Header.Del(cfVisitor)
 		req.Header.Del(cfConnectingIP)
+	}
+
+	// realIPHeader is a non-standard header name (opt-in via config), set
+	// unconditionally on every request regardless of trust. It exists for
+	// deployments with another proxy between Badger and the backend that
+	// unconditionally overwrites X-Forwarded-For/X-Real-Ip instead of
+	// appending to them - a proxy like that has no reason to touch a header
+	// name it doesn't recognize, so this survives where the standard ones
+	// don't.
+	if p.realIPHeader != "" {
+		req.Header.Set(p.realIPHeader, realIP)
 	}
 }
