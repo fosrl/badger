@@ -24,6 +24,13 @@ type Config struct {
 	TrustIP                     []string `json:"trustip,omitempty"`
 	DisableDefaultCFIPs         bool     `json:"disableDefaultCFIPs,omitempty"`
 	CustomIPHeader              string   `json:"customIPHeader,omitempty"`
+	RealIPHeader                string   `json:"realIpHeader,omitempty"`
+	RemoteUserIDHeader          string   `json:"remoteUserIdHeader,omitempty"`
+	RemoteVirtualApiKeyIDHeader string   `json:"remoteVirtualApiKeyIdHeader,omitempty"`
+	RemoteUserHeader            string   `json:"remoteUserHeader,omitempty"`
+	RemoteEmailHeader           string   `json:"remoteEmailHeader,omitempty"`
+	RemoteNameHeader            string   `json:"remoteNameHeader,omitempty"`
+	RemoteRoleHeader            string   `json:"remoteRoleHeader,omitempty"`
 }
 
 const (
@@ -32,6 +39,13 @@ const (
 	xForwardProto  = "X-Forwarded-Proto"
 	cfConnectingIP = "CF-Connecting-IP"
 	cfVisitor      = "CF-Visitor"
+
+	defaultRemoteUserIDHeader          = "Remote-User-Id"
+	defaultRemoteVirtualApiKeyIDHeader = "Remote-Virtual-Api-Key-Id"
+	defaultRemoteUserHeader            = "Remote-User"
+	defaultRemoteEmailHeader           = "Remote-Email"
+	defaultRemoteNameHeader            = "Remote-Name"
+	defaultRemoteRoleHeader            = "Remote-Role"
 )
 
 type Badger struct {
@@ -46,6 +60,20 @@ type Badger struct {
 	disableForwardAuth          bool
 	trustIP                     []*net.IPNet
 	customIPHeader              string
+	realIPHeader                string
+	remoteUserIDHeader          string
+	remoteVirtualApiKeyIDHeader string
+	remoteUserHeader            string
+	remoteEmailHeader           string
+	remoteNameHeader            string
+	remoteRoleHeader            string
+}
+
+func stringOrDefault(value, def string) string {
+	if value == "" {
+		return def
+	}
+	return value
 }
 
 type VerifyBody struct {
@@ -62,19 +90,27 @@ type VerifyBody struct {
 	BadgerVersion      string            `json:"badgerVersion,omitempty"`
 }
 
+type ClientErrorResponse struct {
+	StatusCode  int    `json:"statusCode,omitempty"`
+	ContentType string `json:"contentType,omitempty"`
+	Body        string `json:"body"`
+}
+
 type VerifyResponse struct {
 	Data struct {
-		HeaderAuthChallenged bool              `json:"headerAuthChallenged"`
-		Valid                bool              `json:"valid"`
-		RedirectURL          *string           `json:"redirectUrl"`
-		UserId               *string           `json:"userId,omitempty"`
-		DontStripSession     bool              `json:"dontStripSession,omitempty"`
-		Username             *string           `json:"username,omitempty"`
-		Email                *string           `json:"email,omitempty"`
-		Name                 *string           `json:"name,omitempty"`
-		Role                 *string           `json:"role,omitempty"`
-		ResponseHeaders      map[string]string `json:"responseHeaders,omitempty"`
-		PangolinVersion      *string           `json:"pangolinVersion,omitempty"`
+		HeaderAuthChallenged bool                 `json:"headerAuthChallenged"`
+		Valid                bool                 `json:"valid"`
+		RedirectURL          *string              `json:"redirectUrl"`
+		UserId               *string              `json:"userId,omitempty"`
+		DontStripSession     bool                 `json:"dontStripSession,omitempty"`
+		Username             *string              `json:"username,omitempty"`
+		Email                *string              `json:"email,omitempty"`
+		Name                 *string              `json:"name,omitempty"`
+		Role                 *string              `json:"role,omitempty"`
+		VirtualApiKeyId      *string              `json:"virtualApiKeyId,omitempty"`
+		ResponseHeaders      map[string]string    `json:"responseHeaders,omitempty"`
+		PangolinVersion      *string              `json:"pangolinVersion,omitempty"`
+		ClientError          *ClientErrorResponse `json:"clientError,omitempty"`
 	} `json:"data"`
 }
 
@@ -108,6 +144,13 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
 		accessTokenHeader:           config.AccessTokenHeader,
 		disableForwardAuth:          config.DisableForwardAuth,
 		customIPHeader:              config.CustomIPHeader,
+		realIPHeader:                config.RealIPHeader,
+		remoteUserIDHeader:          stringOrDefault(config.RemoteUserIDHeader, defaultRemoteUserIDHeader),
+		remoteVirtualApiKeyIDHeader: stringOrDefault(config.RemoteVirtualApiKeyIDHeader, defaultRemoteVirtualApiKeyIDHeader),
+		remoteUserHeader:            stringOrDefault(config.RemoteUserHeader, defaultRemoteUserHeader),
+		remoteEmailHeader:           stringOrDefault(config.RemoteEmailHeader, defaultRemoteEmailHeader),
+		remoteNameHeader:            stringOrDefault(config.RemoteNameHeader, defaultRemoteNameHeader),
+		remoteRoleHeader:            stringOrDefault(config.RemoteRoleHeader, defaultRemoteRoleHeader),
 	}
 
 	// Validate required fields only if forward auth is enabled
@@ -276,11 +319,12 @@ func (p *Badger) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	req.Header.Del("Remote-User")
-	req.Header.Del("Remote-Email")
-	req.Header.Del("Remote-Name")
-	req.Header.Del("Remote-Role")
-	req.Header.Del("Remote-User-Id")
+	req.Header.Del(p.remoteUserHeader)
+	req.Header.Del(p.remoteEmailHeader)
+	req.Header.Del(p.remoteNameHeader)
+	req.Header.Del(p.remoteRoleHeader)
+	req.Header.Del(p.remoteUserIDHeader)
+	req.Header.Del(p.remoteVirtualApiKeyIDHeader)
 
 	if result.Data.ResponseHeaders != nil {
 		for key, value := range result.Data.ResponseHeaders {
@@ -323,23 +367,27 @@ func (p *Badger) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		}
 
 		if result.Data.UserId != nil {
-			req.Header.Add("Remote-User-Id", *result.Data.UserId)
+			req.Header.Add(p.remoteUserIDHeader, *result.Data.UserId)
 		}
 
 		if result.Data.Username != nil {
-			req.Header.Add("Remote-User", *result.Data.Username)
+			req.Header.Add(p.remoteUserHeader, *result.Data.Username)
 		}
 
 		if result.Data.Email != nil {
-			req.Header.Add("Remote-Email", *result.Data.Email)
+			req.Header.Add(p.remoteEmailHeader, *result.Data.Email)
 		}
 
 		if result.Data.Name != nil {
-			req.Header.Add("Remote-Name", *result.Data.Name)
+			req.Header.Add(p.remoteNameHeader, *result.Data.Name)
 		}
 
 		if result.Data.Role != nil {
-			req.Header.Add("Remote-Role", *result.Data.Role)
+			req.Header.Add(p.remoteRoleHeader, *result.Data.Role)
+		}
+
+		if result.Data.VirtualApiKeyId != nil {
+			req.Header.Add(p.remoteVirtualApiKeyIDHeader, *result.Data.VirtualApiKeyId)
 		}
 
 		if !result.Data.DontStripSession {
@@ -350,6 +398,21 @@ func (p *Badger) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 		fmt.Println("Badger: Valid session")
 		p.next.ServeHTTP(rw, req)
+		return
+	}
+
+	if result.Data.ClientError != nil && result.Data.ClientError.Body != "" {
+		statusCode := result.Data.ClientError.StatusCode
+		if statusCode == 0 {
+			statusCode = http.StatusUnauthorized
+		}
+		contentType := result.Data.ClientError.ContentType
+		if contentType == "" {
+			contentType = "application/json"
+		}
+		rw.Header().Set("Content-Type", contentType)
+		rw.WriteHeader(statusCode)
+		rw.Write([]byte(result.Data.ClientError.Body))
 		return
 	}
 
@@ -548,5 +611,16 @@ func (p *Badger) setIPHeaders(req *http.Request, realIP string) {
 		// Remove CF headers if present
 		req.Header.Del(cfVisitor)
 		req.Header.Del(cfConnectingIP)
+	}
+
+	// realIPHeader is a non-standard header name (opt-in via config), set
+	// unconditionally on every request regardless of trust. It exists for
+	// deployments with another proxy between Badger and the backend that
+	// unconditionally overwrites X-Forwarded-For/X-Real-Ip instead of
+	// appending to them - a proxy like that has no reason to touch a header
+	// name it doesn't recognize, so this survives where the standard ones
+	// don't.
+	if p.realIPHeader != "" {
+		req.Header.Set(p.realIPHeader, realIP)
 	}
 }
