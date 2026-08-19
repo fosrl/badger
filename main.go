@@ -619,7 +619,7 @@ func (p *Badger) setIPHeaders(req *http.Request, realIP string) {
 	// unconditionally overwrites X-Forwarded-For/X-Real-Ip instead of
 	// appending to them - a proxy like that has no reason to touch a header
 	// name it doesn't recognize, so this survives where the standard ones
-	// don't.
+	// don't
 	if p.realIPHeader != "" {
 		req.Header.Set(p.realIPHeader, realIP)
 	}
