@@ -70,10 +70,10 @@ type Badger struct {
 }
 
 func stringOrDefault(value, def string) string {
-	if value == "" {
-		return def
+	if value != "" {
+		return value
 	}
-	return value
+	return def
 }
 
 type VerifyBody struct {
