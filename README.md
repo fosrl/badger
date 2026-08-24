@@ -1,11 +1,11 @@
 # Pangolin Middleware: Badger
 
-Badger is a middleware plugin designed to work with Traefik in conjunction with [Pangolin](https://github.com/fosrl/pangolin), an identity-aware reverse proxy and zero-trust VPN. Badger acts as an authentication bouncer, ensuring only authenticated and authorized requests are allowed through the proxy.
+Badger is a middleware plugin designed to work with Traefik in conjunction with [Pangolin](https://pangolin.net/github), an identity-aware reverse proxy and zero-trust VPN. Badger acts as an authentication bouncer, ensuring only authenticated and authorized requests are allowed through the proxy.
 
 > [!NOTE]
 > Badger can also be used standalone for IP handling (Cloudflare and custom proxy support) without Pangolin. Simply set `disableForwardAuth: true` in your configuration. See the [Disabling Forward Auth](#disabling-forward-auth) section below for details.
 
-This plugin is **required** to be installed alongside [Pangolin](https://github.com/fosrl/pangolin) to enforce secure authentication and session management.
+This plugin is **required** to be installed alongside [Pangolin](https://pangolin.net/github) to enforce secure authentication and session management.
 
 ## Installation
 
