@@ -101,6 +101,7 @@ type VerifyResponse struct {
 		HeaderAuthChallenged bool                 `json:"headerAuthChallenged"`
 		Valid                bool                 `json:"valid"`
 		RedirectURL          *string              `json:"redirectUrl"`
+		RedirectPermanent    *bool                `json:"redirectPermanent"`
 		UserId               *string              `json:"userId,omitempty"`
 		DontStripSession     bool                 `json:"dontStripSession,omitempty"`
 		Username             *string              `json:"username,omitempty"`
@@ -347,8 +348,16 @@ func (p *Badger) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	if result.Data.RedirectURL != nil && *result.Data.RedirectURL != "" {
-		fmt.Println("Badger: Redirecting to", *result.Data.RedirectURL)
-		http.Redirect(rw, req, *result.Data.RedirectURL, http.StatusFound)
+		status := http.StatusFound
+		if result.Data.RedirectPermanent != nil {
+			if *result.Data.RedirectPermanent {
+				status = http.StatusPermanentRedirect
+			} else {
+				status = http.StatusTemporaryRedirect
+			}
+		}
+		fmt.Println("Badger: Redirecting to", *result.Data.RedirectURL, "with status", status)
+		http.Redirect(rw, req, *result.Data.RedirectURL, status)
 		return
 	}
 
